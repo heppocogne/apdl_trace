@@ -174,6 +174,19 @@ def test_bulk_file_not_traced(tmp_path):
     assert body.count("TRACE|CMD") == 0
 
 
+def test_no_trace_while_output_redirected(tmp_path):
+    text = "a=1\n/OUT,res,dat\n*VWRITE,a\n(F5.1)\nb=2\n/OUT\nc=3\n"
+    out, _ = _convert(tmp_path, {"m.inp": text})
+    lines = (out / "m.inp").read_text(encoding="latin-1").split("\n")
+    a, b = lines.index("/OUT,res,dat"), lines.index("/OUT")
+    assert not any("TRACE|" in x or "TRC" in x for x in lines[a:b])
+    assert any("TRACE|CMD" in x for x in lines[b:])
+    assert any("TRACE|CMD" in x for x in lines[:a])
+    assert "/OUTPUT でファイルへ出力中" in (out / "convert_warnings.txt").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_no_dryrun_keeps_solve(tmp_path):
     out, _ = _convert(tmp_path, {"m.inp": "/SOLU\nSOLVE\n"}, dryrun=False)
     lines = (out / "m.inp").read_text(encoding="latin-1").split("\n")

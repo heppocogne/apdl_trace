@@ -273,6 +273,7 @@ class Converter:
         ctxs = [_Ctx("lib" if library else "file", rel)]
         expecting_libname = library
         seen_solve = False
+        redirected = False
 
         for idx, st in enumerate(stmts):
             ctx = ctxs[-1]
@@ -330,6 +331,14 @@ class Converter:
                 self.stats[st.name] += 1
 
             unit = self._convert_cmd(st, rel, cat, spec, ctx)
+            if st.name == "/OUTPUT":
+                head = st.fields[0].strip().upper() if st.fields else ""
+                redirected = head not in ("", "TERM")
+            if redirected:
+                # ファイルへの出力中は、トレース行がそのファイルに混ざるため挿入しない
+                if unit.pre or unit.post:
+                    self.stats["redirected"] += 1
+                unit.pre, unit.post = [], []
             units.append(unit)
             if cat == "create":
                 name = _file_name(st.fields) if st.fields else ""
@@ -705,6 +714,11 @@ class Converter:
                     f"{name} が {self.stats[name]} 箇所ある"
                     "（トレース出力が抑止・分散される可能性）"
                 )
+        if self.stats["redirected"]:
+            lines.append(
+                f"/OUTPUT でファイルへ出力中の {self.stats['redirected']} コマンドは"
+                "トレースしていない（出力ファイルへの混入を避けるため）"
+            )
         path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
