@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -120,6 +121,41 @@ def _rng(a: float | None, b: float | None) -> str:
         return "?"
     sa, sb = fmt_num(a), fmt_num(b)
     return sa if sa == sb else f"{sa}〜{sb}"
+
+
+def sel_term(
+    d: Dictionary, coord_name: Callable[[str], str], name: str, args: list[ArgVal]
+) -> str:
+    """選択コマンド 1 つが表す条件の文（例: "Y=20"、"MAT=1"、"選択要素の節点"）。"""
+    if name in _REL_TERM:
+        return _REL_TERM[name]
+    item = (
+        args[1].key.strip().upper()
+        if len(args) > 1 and not args[1].is_empty
+        else _ITEM_DEFAULT.get(name, "")
+    )
+    comp = args[2].key.strip().upper() if len(args) > 2 else ""
+    vmin = args[3].key if len(args) > 3 else ""
+    vmax = args[4].key if len(args) > 4 and not args[4].is_empty else vmin
+    rng = _rng(parse_num(vmin), parse_num(vmax))
+    if rng == "?":
+        rng = vmin if vmin == vmax else f"{vmin}〜{vmax}"
+    if item.startswith("LOC"):
+        return f"{coord_name(comp)}={rng}"
+    if item[:4] in ("NODE", "ELEM", "KP", "LINE", "AREA", "VOLU"):
+        return f"番号 {rng}"
+    if item[:3] in ("MAT", "TYP", "REA", "SEC", "ESY"):
+        label = {"TYP": "TYPE", "REA": "REAL", "SEC": "SECNUM", "ESY": "ESYS"}.get(
+            item[:3], item
+        )
+        return f"{label}={rng}"
+    if item.startswith("ENAM"):
+        return f"要素名={d.element_name(vmin)}"
+    if item.startswith("EXT"):
+        return "外表面"
+    if item.startswith("CENT"):
+        return f"重心の{coord_name(comp)}={rng}"
+    return f"{item} {comp} {rng}".strip()
 
 
 # ---- 状態 ----
@@ -492,7 +528,7 @@ class Describer:
 
     def _h_csys(self, occ: Occ, args: list[ArgVal]) -> list[str]:
         name = occ.entry.get("name")
-        if name in ("LOCAL", "CLOCAL") and args:
+        if name in ("LOCAL", "CLOCAL", "CSKP", "CSWPLA") and args:
             kcn = parse_num(args[0].key)
             if kcn is not None:
                 kcs = args[1].key if len(args) > 1 and not args[1].is_empty else "0"
@@ -761,35 +797,7 @@ class Describer:
         return " / ".join(parts)
 
     def _sel_term(self, name: str, args: list[ArgVal]) -> str:
-        if name in _REL_TERM:
-            return _REL_TERM[name]
-        item = (
-            args[1].key.strip().upper()
-            if len(args) > 1 and not args[1].is_empty
-            else _ITEM_DEFAULT.get(name, "")
-        )
-        comp = args[2].key.strip().upper() if len(args) > 2 else ""
-        vmin = args[3].key if len(args) > 3 else ""
-        vmax = args[4].key if len(args) > 4 and not args[4].is_empty else vmin
-        rng = _rng(parse_num(vmin), parse_num(vmax))
-        if rng == "?":
-            rng = vmin if vmin == vmax else f"{vmin}〜{vmax}"
-        if item.startswith("LOC"):
-            return f"{self._coord_name(comp)}={rng}"
-        if item[:4] in ("NODE", "ELEM", "KP", "LINE", "AREA", "VOLU"):
-            return f"番号 {rng}"
-        if item[:3] in ("MAT", "TYP", "REA", "SEC", "ESY"):
-            label = {"TYP": "TYPE", "REA": "REAL", "SEC": "SECNUM", "ESY": "ESYS"}.get(
-                item[:3], item
-            )
-            return f"{label}={rng}"
-        if item.startswith("ENAM"):
-            return f"要素名={self.d.element_name(vmin)}"
-        if item.startswith("EXT"):
-            return "外表面"
-        if item.startswith("CENT"):
-            return f"重心の{self._coord_name(comp)}={rng}"
-        return f"{item} {comp} {rng}".strip()
+        return sel_term(self.d, self._coord_name, name, args)
 
     # ---- 要素生成 ----
 
