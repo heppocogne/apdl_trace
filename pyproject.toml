@@ -23,8 +23,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  "Software Development :: Version Control",
-  "Software Development :: Version Control :: Git"
 ]
 # 標準ライブラリのみの予定
 dependencies = []
@@ -40,8 +38,16 @@ dev = [
 # Homepage = "https://github.com/heppocogne/apdl_trace"
 
 [project.scripts]
-apdl_help = "apdl_help.main:main"
+apdl_trace = "apdl_trace.main:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+apdl_trace = ["data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = []
