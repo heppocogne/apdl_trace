@@ -1,0 +1,15 @@
+# Python files
+build/
+dist/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.coverage*
+.venv/
+.ruff_cache/
+
+
+# Other files
+*.log
+.claude/

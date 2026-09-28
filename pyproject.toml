@@ -1,0 +1,47 @@
+[project]
+name = "apdl_trace"
+version = "0.1.0"
+description = "APDLの理解を助けるツール"
+readme = "README.md"
+requires-python = ">=3.11"
+# license = { text = "MIT" }
+authors = [
+  { name = "heppocogne", email = "83043568+heppocogne@users.noreply.github.com" },
+]
+keywords = []
+classifiers = [
+  # "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
+  # "Development Status :: 4 - Beta",
+  # "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  # "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Software Development :: Version Control",
+  "Software Development :: Version Control :: Git"
+]
+# 標準ライブラリのみの予定
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.16.0",
+]
+
+[project.urls]
+# Homepage = "https://github.com/heppocogne/apdl_trace"
+
+[project.scripts]
+apdl_help = "apdl_help.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = []
