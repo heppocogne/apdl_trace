@@ -80,7 +80,22 @@ _ITEM_DEFAULT = {
 }
 
 # 要素を作るコマンド
-_CREATES = {"E", "EINTF", "EGEN", "ESURF", "AMESH", "VMESH", "VSWEEP", "PSMESH"}
+_CREATES = {
+    "E",
+    "EINTF",
+    "EGEN",
+    "ESURF",
+    "AMESH",
+    "VMESH",
+    "VSWEEP",
+    "PSMESH",
+    "LMESH",
+    "VDRAG",
+    "VEXT",
+    "VROT",
+}
+# 辞書にない要素の次元を名前から推定する
+_DIM_BY_PREFIX = (("SOLID", 3), ("SHELL", 3), ("PLANE", 2))
 
 
 def loc(entry: dict) -> str:
@@ -809,6 +824,7 @@ class Describer:
                 lines.append(f"→ 選択中の節点 {dn:+,} / 要素 {de:+,}")
             if dn and name not in ("NUMMRG",):
                 lines.append(f"→ 選択中の節点 {dn:+,}")
+                s.coord_cmds.append(f"{name} @{loc(occ.entry)}")
             s.sel["E"].count = post.int("E")
             s.sel["N"].count = post.int("N")
         for r in occ.find("SPR"):
@@ -1078,9 +1094,14 @@ class Describer:
                     "    → " + mapped,
                 ]
         extra = "（変換対象外）" if e.get("external") else ""
+        defined = ""
+        if target.startswith(("*CREATE in", "*ULIB")):
+            fields = e.get("fields", [])
+            mname = fields[0] if cat == "use" and fields else e.get("name", "?")
+            defined, target = f" / 定義: {target}", mname.strip().upper()
         head = f"▼ {target}（{how} from {loc(e)}"
         head += (", " + ", ".join(arg_txt)) if arg_txt else ""
-        return [head + "）" + extra]
+        return [head + defined + "）" + extra]
 
     def _match_mapping(self, fname: str) -> str | None:
         target = Path(fname).name.upper()
@@ -1274,6 +1295,8 @@ class Describer:
                 c["t" + axis.lower()] = (r.num("T0"), r.num("T1"))
         elems = []
         for r in occ.find("CHKE"):
+            if any(r.int(k) is None for k in ("T", "EN", "R", "M", "N")):
+                continue  # 途中で切れた行
             elems.append(
                 {
                     "T": r.int("T"),
@@ -1320,13 +1343,15 @@ class Describer:
             lines.append(
                 "→ 要素: "
                 + ", ".join(
-                    f"TYPE {t} {self.d.element_name(en)} {num_s(n)}"
+                    f"TYPE {t} {self._group_ename(t, en)} {num_s(n)}"
                     for t, (en, n) in sorted(by_type.items())
                 )
             )
         lines.append(f"→ モデル: {c['model']}")
 
-        if prev is not None and self._changed(prev, c):
+        if prev is not None and not prev.get("nodes") and c.get("nodes"):
+            lines.append(f"→ 前回（@{prev['loc']}）は節点なし。以後にモデルを作成")
+        elif prev is not None and self._changed(prev, c):
             cands = s.coord_cmds or ["（候補のコマンドは記録されていない）"]
             lines.append(
                 f"→ 座標が変化（前回 @{prev['loc']} から）。候補: "
@@ -1338,12 +1363,30 @@ class Describer:
         s.chks.append(c)
         return lines
 
+    def _group_ename(self, t: int, en: int | None) -> str:
+        """辞書になければ ET で定義した名前を使う。"""
+        if self.d.element(en) is None and en:
+            et = self.s.et.get(t)
+            if et and et.get("ename") not in (None, "?"):
+                return et["ename"]
+        return self.d.element_name(en)
+
+    def _group_dim(self, g: dict) -> int | None:
+        e = self.d.element(g["EN"])
+        if e:
+            return e.get("dim")
+        name = self._group_ename(g["T"], g["EN"]).upper()
+        for prefix, dim in _DIM_BY_PREFIX:
+            if name.startswith(prefix):
+                return dim
+        return None
+
     def _model_kind(self, c: dict) -> str:
         dims = set()
         for g in c.get("elem_groups", []):
-            e = self.d.element(g["EN"])
-            if e and e.get("dim") in (2, 3):
-                dims.add(e["dim"])
+            dim = self._group_dim(g)
+            if dim in (2, 3):
+                dims.add(dim)
         if not dims:
             return "モデル不明" if c.get("elems") else "要素なし"
         if 3 not in dims:
@@ -1532,7 +1575,8 @@ class Describer:
             sides = []
             for g in groups:
                 sides.append(
-                    f"TYPE {g['T']} {self.d.element_name(g['EN'])} × {num_s(g['N'])}"
+                    f"TYPE {g['T']} {self._group_ename(g['T'], g['EN'])}"
+                    f" × {num_s(g['N'])}"
                 )
             line = f"REAL {r}: " + " / ".join(sides)
             mats = {
@@ -1607,7 +1651,7 @@ class Describer:
                     continue
                 label = names[k] if k < len(names) else f"R{k + 1}"
                 items.append(f"{label}={v}")
-            real_lines.append(f"  REAL {r}: " + ", ".join(items))
+            real_lines.append(f"  REAL {r}: " + (", ".join(items) or "（値なし）"))
         sec_lines = [
             f"  SECNUM {i}: {d.get('type')} {d.get('subtype')} {d.get('name')} @{d.get('loc')}"
             for i, d in sorted(s.sections.items())
@@ -1629,7 +1673,8 @@ class Describer:
         section("接触ペア一覧", [f"  {p}" for p in self.contact_pairs()])
 
         bolt = [
-            f"  断面 {p['secid']}（{p['name']}）: 要素 {num_s(p['elems'])} @{p['loc']}"
+            f"  断面 {p['secid'] or '（番号は自動）'}（{p['name']}）:"
+            f" 要素 {num_s(p['elems'])} @{p['loc']}"
             for p in s.psmesh
         ]
         bolt += [f"  ステップ {x['step']} @{x['loc']}: {x['text']}" for x in s.sloads]
@@ -1673,7 +1718,9 @@ class Describer:
         step_lines = []
         for sv in s.solves:
             step_lines.append(
-                f"  ステップ {sv['step']} 時刻 {sv['time']} @{sv['loc']}: 荷重・拘束 {len(sv['loads'])} 件"
+                f"  ステップ {sv['step']} 時刻 "
+                f"{sv['time'] if sv['time'] is not None else '（未設定）'}"
+                f" @{sv['loc']}: 荷重・拘束 {len(sv['loads'])} 件"
             )
             step_lines += [f"      {x}" for x in sv["loads"]]
         section("荷重ステップ一覧", step_lines)

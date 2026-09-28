@@ -85,6 +85,8 @@ class ArgVal:
 Formatter = Callable[[str, int, ArgVal], str | None]
 
 _PH_RE = re.compile(r"\{([^{}]+)\}")
+# [[...]]: 中の引数がすべて空欄なら区間ごと消す
+_OPT_RE = re.compile(r"\[\[(.*?)\]\]")
 
 
 def _norm_key(k: str) -> str:
@@ -193,6 +195,8 @@ class Dictionary:
         e = self.element(key)
         if e:
             return e["name"]
+        if key is not None and parse_num(str(key)) == 0:
+            return "ヌル要素（0）"
         return str(key) if key is not None else "?"
 
     def keyopt(self, enam: str | int | None, knum: int, value: str) -> str | None:
@@ -322,4 +326,21 @@ def render(
         name, _, style = inner.partition(":")
         return show(name.strip(), style.strip() or None)
 
-    return _PH_RE.sub(repl, tpl)
+    def given(inner: str) -> bool:
+        if inner.startswith("@"):
+            return True
+        for part in re.split(r"〜", inner.partition(":")[0]):
+            name = part.strip()
+            if name in extras:
+                return True
+            av = _arg(entry, args, name)
+            if av is None or not av.is_empty:
+                return True
+        return False
+
+    def optional(m: re.Match[str]) -> str:
+        seg = m.group(1)
+        inners = [x.group(1) for x in _PH_RE.finditer(seg)]
+        return seg if not inners or any(given(x) for x in inners) else ""
+
+    return _PH_RE.sub(repl, _OPT_RE.sub(optional, tpl))

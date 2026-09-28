@@ -34,6 +34,9 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     )
     src = Path(args.src)
     out = Path(args.out)
+    if not src.is_dir():
+        print(f"元マクロのディレクトリが見つからない: {src}", file=sys.stderr)
+        return 2
     if src.resolve() == out.resolve():
         print("出力先は元マクロと別のディレクトリにすること", file=sys.stderr)
         return 2
@@ -57,6 +60,10 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         theta_eps=args.theta_eps,
         state_mode=args.state,
     )
+    for p in (Path(args.out_file), Path(args.map), opts.dict_path):
+        if p is not None and not p.is_file():
+            print(f"ファイルが見つからない: {p}", file=sys.stderr)
+            return 2
     text = run_extract(Path(args.out_file), Path(args.map), opts)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
@@ -86,7 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("out", help="変換版の出力ディレクトリ")
     c.add_argument(
         "--ext",
-        action="append",
+        action="extend",
+        nargs="+",
         help="対象の拡張子（複数可）。拡張子なしは none。既定: .mac .inp none",
     )
     c.add_argument(

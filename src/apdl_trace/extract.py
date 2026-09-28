@@ -79,7 +79,17 @@ class Analyzer:
             self.cur = occ
         elif tag == "START":
             occ = Occ(r.tid, self.entry(r.tid), [r], kind="start")
-            self.block().items.append(occ)
+            blk = self.block()
+            # 呼び出しの直後の START は呼び出しの見出しで足りる
+            parent = self.stack[-2] if len(self.stack) >= 2 else None
+            in_call = (
+                isinstance(parent, Occ)
+                and parent.kind == "call"
+                and parent.body is blk
+                and not blk.items
+            )
+            occ.headed = not in_call
+            blk.items.append(occ)
             self.cur = occ
         elif tag == "RET":
             for k in range(len(self.stack) - 1, 0, -1):
@@ -125,19 +135,21 @@ class Analyzer:
             return
         if isinstance(cur, Loop):
             cur.lines = [f"[{loc(cur.entry)}] {cur.entry.get('text', '')}"]
-            vals = [
-                f"{k}={fmt_val(v)}"
-                for k, v in cur.values().items()
-                if k.startswith("A")
-            ]
+            fields = cur.entry.get("fields", [])
+            vals = []
+            for k, v in cur.values().items():
+                if not (k.startswith("A") and k[1:].isdigit()):
+                    continue
+                i = int(k[1:])
+                name = fields[i - 1].strip() if i <= len(fields) else k
+                vals.append(f"{name}（={fmt_val(v)}）")
             if vals:
-                cur.lines.append("    値: " + ", ".join(vals))
+                cur.lines.append("    → 値: " + ", ".join(vals))
             return
         if cur.kind == "call":
             cur.lines = self.desc.call_header(cur)
         elif cur.kind == "start":
-            top = self.block() is self.root or cur.entry.get("created")
-            cur.lines = self.desc.start_lines(cur, bool(top))
+            cur.lines = self.desc.start_lines(cur, cur.headed)
         else:
             cur.lines = self.desc.describe(cur)
 
@@ -173,7 +185,8 @@ class Renderer:
         shown = list(lp.iters) if expand else [lp.iters[0], None, lp.iters[-1]]
         for it in shown:
             if it is None:
-                self.emit(indent + 2, [f"… 2〜{n - 1}回目 省略（{n - 2}回）"])
+                span = "2回目" if n == 3 else f"2〜{n - 1}回目"
+                self.emit(indent + 2, [f"… {span} 省略（{n - 2}回）"])
                 continue
             v = fmt_val(it.value)
             label = f"── {it.n}回目" + (f"（{var}={v}）" if v is not None else "")

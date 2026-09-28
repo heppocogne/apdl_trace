@@ -103,6 +103,7 @@ class Occ:
     lines: list[str] = field(default_factory=list)
     body: Block | None = None
     returned: bool = False
+    headed: bool = False  # 見出し（▼）を出すか
 
     def values(self) -> dict[str, str]:
         out: dict[str, str] = {}

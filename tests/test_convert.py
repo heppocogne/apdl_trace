@@ -147,6 +147,21 @@ def test_return_reference_block_if_wraps(tmp_path):
     assert "TRCRV_=_RETURN" in lines[:k]
 
 
+def test_return_chain_keeps_value(tmp_path):
+    """_RETURN を参照する行が続くとき、送った後処理も退避・復元の内側に入る。"""
+    text = "VMESH,ALL\nok=_RETURN\n*IF,_RETURN,GT,0,THEN\nn=1\n*ENDIF\n"
+    out, tmap = _convert(tmp_path, {"m.inp": text})
+    lines = (out / "m.inp").read_text(encoding="latin-1").split("\n")
+    vmesh = next(e["id"] for e in tmap["entries"] if e.get("text") == "VMESH,ALL")
+    k = lines.index("ok=_RETURN")
+    post = next(i for i, x in enumerate(lines) if x == f"TRACE|CMD|{vmesh:06d}")
+    assert k < post
+    save = lines.index("TRCRV_=_RETURN")
+    restore = lines.index("_RETURN=TRCRV_")
+    assert k < save < post < restore < lines.index("*IF,_RETURN,GT,0,THEN")
+    assert "*GET" not in "".join(lines[k + 1 : save])
+
+
 def test_ulib_library(tmp_path):
     lib = "MYMAC1\nD,ALL,UX,0\n/EOF\nMYMAC2\nF,1,FX,ARG1\n/EOF\n"
     main = "*ULIB,lib,mlib\n*USE,MYMAC1\nmymac2,5\n"
@@ -180,6 +195,8 @@ def test_no_trace_while_output_redirected(tmp_path):
     lines = (out / "m.inp").read_text(encoding="latin-1").split("\n")
     a, b = lines.index("/OUT,res,dat"), lines.index("/OUT")
     assert not any("TRACE|" in x or "TRC" in x for x in lines[a:b])
+    # 切り替えの /OUT 自体は切り替え前に記録する
+    assert lines[a - 1].startswith("TRACE|CMD")
     assert any("TRACE|CMD" in x for x in lines[b:])
     assert any("TRACE|CMD" in x for x in lines[:a])
     assert "/OUTPUT でファイルへ出力中" in (out / "convert_warnings.txt").read_text(

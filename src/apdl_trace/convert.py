@@ -334,7 +334,10 @@ class Converter:
             if st.name == "/OUTPUT":
                 head = st.fields[0].strip().upper() if st.fields else ""
                 redirected = head not in ("", "TERM")
-            if redirected:
+                if redirected:
+                    # 切り替え自体は切り替える前に記録する
+                    unit.pre, unit.post = unit.pre + unit.post, []
+            elif redirected:
                 # ファイルへの出力中は、トレース行がそのファイルに混ざるため挿入しない
                 if unit.pre or unit.post:
                     self.stats["redirected"] += 1
@@ -662,10 +665,10 @@ class Converter:
         for i, u in enumerate(units):
             out += u.pre
             out += u.body
-            if pending:
-                out += pending
-                pending = []
-            if not u.post:
+            # 前のコマンドから送られてきた後処理も、この位置で同じ扱いにする
+            block = pending + u.post
+            pending = []
+            if not block:
                 continue
             nxt = _next_exec(units, i)
             if nxt is not None and nxt.refs_ret:
@@ -674,21 +677,24 @@ class Converter:
                     and not nxt.pre
                     and (nxt.cat != "label")
                 ):
-                    pending = u.post
+                    pending = block
                     continue
-                out += Emitter.save_status() + u.post + Emitter.restore_status()
+                out += Emitter.save_status() + block + Emitter.restore_status()
                 self._warn_status(rel, nxt)
                 continue
-            out += u.post
+            out += block
         out += pending
         return out
 
     def _warn_status(self, rel: str, u: Unit) -> None:
-        if u.stmt is not None:
-            self.warnings.append(
-                f"{rel}:{u.stmt.lineno}: _RETURN / _STATUS を退避・復元して挿入した"
-                f"（復元できるかは要確認）: {display(u.stmt.text)}"
-            )
+        if u.stmt is None:
+            return
+        msg = (
+            f"{rel}:{u.stmt.lineno}: _RETURN / _STATUS を退避・復元して挿入した"
+            f"（復元できるかは要確認）: {display(u.stmt.text)}"
+        )
+        if msg not in self.warnings:
+            self.warnings.append(msg)
 
     # ---- 出力 ----
 

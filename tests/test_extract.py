@@ -147,6 +147,16 @@ def test_flat_model_detected(tmp_path):
     assert "3D（θ幅≈0: Y軸基準）" in text
 
 
+def test_truncated_lines_do_not_crash(tmp_path):
+    """実行が途中で止まり、最後の行が切れていてもレポートを作る。"""
+    tmap, _ = _map(tmp_path, {"m.inp": MACRO})
+    lines = _out_lines(_ids(tmap))
+    for k in range(1, len(lines) + 1):
+        cut = lines[:k]
+        cut[-1] = cut[-1][: len(cut[-1]) // 2]
+        build_report(parse_lines(cut), tmap, ExtractOptions())
+
+
 def test_detail_level_lines(tmp_path):
     tmap, _ = _map(tmp_path, {"m.inp": "NSEL,S,LOC,X,1\nESEL,S,TYPE,,1\n"})
     ids = _ids(tmap)
