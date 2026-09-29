@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -196,9 +197,9 @@ class Renderer:
             self.emit(indent + 2, ["…（ループの終了の記録がない）"])
 
 
-def build_report(
-    recs: list[Rec], tmap: dict, opts: ExtractOptions, out_name: str = ""
-) -> str:
+def _analyze(
+    recs: list[Rec], tmap: dict, opts: ExtractOptions
+) -> tuple[Analyzer, Describer]:
     dic = Dictionary.load(opts.dict_path)
     describer = Describer(
         dic,
@@ -210,6 +211,13 @@ def build_report(
     )
     an = Analyzer(tmap.get("entries", []), describer)
     an.feed(recs)
+    return an, describer
+
+
+def build_report(
+    recs: list[Rec], tmap: dict, opts: ExtractOptions, out_name: str = ""
+) -> str:
+    an, describer = _analyze(recs, tmap, opts)
     r = Renderer(opts)
     header = [
         "APDL トレースレポート",
@@ -233,9 +241,117 @@ def build_report(
     return "\n".join(r.out) + "\n"
 
 
+# ---- 構造化出力（JSON / XML） ----
+
+
+def _occ_data(occ: Occ, opts: ExtractOptions) -> dict:
+    d: dict = {"type": occ.kind, "id": occ.tid, "location": loc(occ.entry)}
+    name = occ.entry.get("name")
+    if name:
+        d["name"] = name
+    cat = occ.entry.get("cat")
+    if cat:
+        d["category"] = cat
+    if occ.lines:
+        d["text"] = list(occ.lines)
+    if occ.body is not None:
+        d["returned"] = occ.returned
+        d["items"] = _block_data(occ.body, opts)
+    return d
+
+
+def _loop_data(lp: Loop, opts: ExtractOptions) -> dict:
+    n = len(lp.iters)
+    d: dict = {
+        "type": "loop",
+        "id": lp.tid,
+        "location": loc(lp.entry),
+        "count": n,
+        "ended": lp.ended,
+    }
+    var = lp.entry.get("var")
+    if var:
+        d["var"] = var
+    if lp.lines:
+        d["text"] = list(lp.lines)
+    expand = opts.expand_all or lp.tid in opts.expand_ids or n <= 2
+    shown = list(lp.iters) if expand else [lp.iters[0], lp.iters[-1]]
+    d["iterations"] = [
+        {"n": it.n, "value": fmt_val(it.value), "items": _block_data(it.block, opts)}
+        for it in shown
+    ]
+    if not expand and n > 2:
+        d["omitted"] = {"from": 2, "to": n - 1, "count": n - 2}
+    return d
+
+
+def _block_data(b: Block, opts: ExtractOptions) -> list[dict]:
+    return [
+        _loop_data(item, opts) if isinstance(item, Loop) else _occ_data(item, opts)
+        for item in b.items
+    ]
+
+
+def build_report_data(
+    recs: list[Rec], tmap: dict, opts: ExtractOptions, out_name: str = ""
+) -> dict:
+    an, describer = _analyze(recs, tmap, opts)
+    return {
+        "out_file": out_name,
+        "trace_lines": len(recs),
+        "trace_level": tmap.get("level"),
+        "dry_run": bool(tmap.get("dryrun")),
+        "items": _block_data(an.root, opts),
+        # 付録は既存レポートと同じ整形済みテキスト行のまま持たせる（集計ロジックの
+        # 構造化は analyze.py 側の大きな変更が要るため、このリリースでは対象外）。
+        "appendix_text": describer.appendix(),
+        "unknown_ids": sorted(an.unknown_ids),
+    }
+
+
+def to_json(data: dict) -> str:
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
+def _xml_add(parent: ET.Element, tag: str, value: object) -> None:
+    el = ET.SubElement(parent, tag)
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _xml_add(el, k, v)
+    elif isinstance(value, list):
+        for v in value:
+            _xml_add(el, "item", v)
+    elif isinstance(value, bool):
+        el.text = "true" if value else "false"
+    elif value is not None:
+        el.text = str(value)
+
+
+def to_xml(data: dict) -> str:
+    root = ET.Element("report")
+    for k, v in data.items():
+        _xml_add(root, k, v)
+    ET.indent(root, space="  ")
+    return (
+        ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8") + "\n"
+    )
+
+
 def run_extract(out_file: Path, map_file: Path, opts: ExtractOptions) -> str:
+    recs, tmap = _load(out_file, map_file, opts)
+    return build_report(recs, tmap, opts, out_file.name)
+
+
+def run_extract_data(out_file: Path, map_file: Path, opts: ExtractOptions) -> dict:
+    recs, tmap = _load(out_file, map_file, opts)
+    return build_report_data(recs, tmap, opts, out_file.name)
+
+
+def _load(
+    out_file: Path, map_file: Path, opts: ExtractOptions
+) -> tuple[list[Rec], dict]:
     tmap = json.loads(map_file.read_text(encoding="utf-8"))
     recs = parse_out(out_file)
     if opts.files_dir is None:
         opts.files_dir = out_file.parent
-    return build_report(recs, tmap, opts, out_file.name)
+    return recs, tmap

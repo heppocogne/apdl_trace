@@ -120,6 +120,26 @@ def test_brief_skips_other_commands(tmp_path):
     assert "NSEL,S,LOC,X,0" in out and "y=NX(1)" in out
 
 
+def test_markdown_nests_for_folding(tmp_path):
+    files = {
+        "m.inp": "*IF,k,EQ,1,THEN\nmymac,1\n*ENDIF\nNSEL,S,NODE,,-2\n",
+        "mymac.mac": "ESEL,S,TYPE,,ARG1\n",
+    }
+    out = _run(tmp_path, files, fmt="md")
+    lines = out.splitlines()
+    assert "## 流れ" in lines and "## 付録" in lines
+    assert "- **▼ m.inp**" in lines
+    # *IF の中の呼び出し → ▼ 見出し → マクロの中身、の順に 1 段ずつ深くなる
+    assert "    - m.inp:2 `mymac,1`" in lines
+    assert "      - **▼ mymac.mac（呼び出し, ARG1=1）**" in lines
+    assert "        - mymac.mac:1 `ESEL,S,TYPE,,ARG1`" in lines
+    assert "  - m.inp:4 `NSEL,S,NODE,,-2`" in lines
+    # APDL の * などは強調として解釈されないようにする
+    assert "  - m.inp:1 `*IF,k,EQ,1,THEN`" in lines
+    assert any(x.startswith("    - → 条件 k = 1") for x in lines)
+    assert "\\*GET" in out  # 付録の見出し
+
+
 def test_cli_static(tmp_path, capsys):
     (tmp_path / "m.inp").write_text("NSEL,S,LOC,X,0\n", encoding="latin-1")
     report = tmp_path / "r.txt"

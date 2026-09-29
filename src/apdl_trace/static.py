@@ -191,6 +191,17 @@ class StaticOptions:
     dict_path: Path | None = None
     brief: bool = False  # 選択・取得・座標系と呼び出しだけを出す
     max_depth: int = 30
+    fmt: str = "text"  # text / md
+
+
+@dataclass
+class _Line:
+    """流れの 1 行分（見出しと、その下に付く説明）。"""
+
+    level: int
+    head: str
+    details: list[str]
+    macro: bool = False  # ▼ の見出し（続く行はこの見出しの中身）
 
 
 @dataclass
@@ -257,7 +268,7 @@ class StaticAnalyzer:
         self.by_name: dict[str, str] = {}  # 大文字のファイル名 → 相対パス
         self.macros: dict[str, _Macro] = {}  # 大文字のマクロ名 → 定義
         self.st = SState()
-        self.out: list[str] = []
+        self.out: list[_Line] = []
         self.unknown: Counter[str] = Counter()
         self.gets: list[str] = []
         self.coords: list[str] = []
@@ -323,9 +334,7 @@ class StaticAnalyzer:
     # ---- 出力 ----
 
     def emit(self, level: int, head: str, details: list[str] = ()) -> None:
-        pad = "  " * level
-        self.out.append(pad + head)
-        self.out += [f"{pad}    → {d}" for d in details]
+        self.out.append(_Line(level, head, list(details)))
 
     # ---- 本体 ----
 
@@ -333,7 +342,7 @@ class StaticAnalyzer:
         rel = self.by_name.get(Path(entry).name.upper(), entry)
         if rel not in self.files:
             raise FileNotFoundError(entry)
-        self.out.append(f"▼ {rel}")
+        self.out.append(_Line(0, f"▼ {rel}", [], macro=True))
         self.walk(self.files[rel], rel, 0, [rel.upper()])
         return self.report(rel)
 
@@ -485,7 +494,7 @@ class StaticAnalyzer:
         tail = how + (f", {arg_txt}" if arg_txt else "")
         tail += f" / 定義: {macro.origin}" if macro.origin else ""
         self.emit(lv, head)
-        self.out.append("  " * (lv + 1) + f"▼ {macro.label}（{tail}）")
+        self.out.append(_Line(lv + 1, f"▼ {macro.label}（{tail}）", [], macro=True))
         self.walk(macro.stmts, macro.rel, lv + 1, [*stack, key])
 
     def _file_macro(self, key: str) -> _Macro | None:
@@ -730,36 +739,107 @@ class StaticAnalyzer:
 
     # ---- レポート ----
 
+    def _sections(self) -> list[tuple[str, list[str]]]:
+        return [
+            ("コンポーネント（登録時の条件）", self.comp_log),
+            ("取得している値（*GET・取得関数）", self.gets),
+            ("座標系の切り替え（CSYS / LOCAL / RSYS など）", self.coords),
+            (
+                "見つからないマクロ・ファイル",
+                [f"  {k}: {n} 回" for k, n in self.missing.most_common()],
+            ),
+            (
+                "辞書に未登録のコマンド（辞書の追加候補）",
+                [f"  {k}: {n} 回" for k, n in self.unknown.most_common()],
+            ),
+        ]
+
     def report(self, entry: str) -> str:
+        if self.opts.fmt == "md":
+            return self._report_md(entry)
         head = [
             "APDL 静的レポート（実行せずに読んだ結果）",
             f"入口: {entry}",
             "",
-            "※ 変数の値は追わない（式のまま表示）。",
-            "※ *IF は各分岐を読み、*ENDIF で選択条件が分岐によって違えば「分岐により異なる」とする。",
-            "※ ループの中は 1 回分だけ読み、*GO のジャンプは追わない（上から順に読む）。",
+            *(f"※ {n}" for n in _NOTES),
             "",
             "━━ 流れ ━━",
         ]
+        flow: list[str] = []
+        for ln in self.out:
+            pad = "  " * ln.level
+            flow.append(pad + ln.head)
+            flow += [f"{pad}    → {d}" for d in ln.details]
         tail = ["", "━━ 付録 ━━", ""]
-
-        def section(title: str, lines: list[str]) -> None:
+        for title, lines in self._sections():
             tail.append(f"■ {title}")
             tail.extend(lines or ["  （なし）"])
             tail.append("")
+        return "\n".join(head + flow + tail)
 
-        section("コンポーネント（登録時の条件）", self.comp_log)
-        section("取得している値（*GET・取得関数）", self.gets)
-        section("座標系の切り替え（CSYS / LOCAL / RSYS など）", self.coords)
-        section(
-            "見つからないマクロ・ファイル",
-            [f"  {k}: {n} 回" for k, n in self.missing.most_common()],
-        )
-        section(
-            "辞書に未登録のコマンド（辞書の追加候補）",
-            [f"  {k}: {n} 回" for k, n in self.unknown.most_common()],
-        )
-        return "\n".join(head + self.out + tail)
+    def _report_md(self, entry: str) -> str:
+        """折りたたみできるエディタ向け。入れ子リストと見出しで構造を表す。"""
+        out = [
+            "# APDL 静的レポート（実行せずに読んだ結果）",
+            "",
+            f"入口: {_md_code(entry)}",
+            "",
+            *(f"> - {_md_text(n)}" for n in _NOTES),
+            "",
+            "## 流れ",
+            "",
+        ]
+        # ▼ の見出しは同じ深さの行を中身として持つため、見出しの数だけ深くする
+        macros: list[int] = []
+        for ln in self.out:
+            while macros and ln.level < macros[-1]:
+                macros.pop()
+            pad = "  " * (ln.level + len(macros))
+            out.append(f"{pad}- {_md_head(ln)}")
+            out += [f"{pad}  - → {_md_text(d)}" for d in ln.details]
+            if ln.macro:
+                macros.append(ln.level)
+        out += ["", "## 付録", ""]
+        for title, lines in self._sections():
+            out += [f"### {_md_text(title)}", ""]
+            items = [f"- {_md_text(x.strip())}" for x in lines]
+            out += [*(items or ["（なし）"]), ""]
+        return "\n".join(out)
+
+
+_NOTES = (
+    "変数の値は追わない（式のまま表示）。",
+    "*IF は各分岐を読み、*ENDIF で選択条件が分岐によって違えば「分岐により異なる」とする。",
+    "ループの中は 1 回分だけ読み、*GO のジャンプは追わない（上から順に読む）。",
+)
+
+_LOC_RE = re.compile(r"^\[([^\]]+)\] (.*)$")
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]<>~|])")
+
+
+def _md_text(s: str) -> str:
+    t = _MD_SPECIAL.sub(r"\\\1", s)
+    # 行頭がリストや見出しの記号に見えないようにする
+    t = re.sub(r"^([-+#>])", r"\\\1", t)
+    return re.sub(r"^(\d+)([.)])(?=\s|$)", r"\1\\\2", t)
+
+
+def _md_code(s: str) -> str:
+    n = 1
+    while "`" * n in s:
+        n += 1
+    fence = "`" * n
+    pad = " " if s.startswith("`") or s.endswith("`") else ""
+    return f"{fence}{pad}{s}{pad}{fence}"
+
+
+def _md_head(ln: _Line) -> str:
+    if ln.macro:
+        return f"**{_md_text(ln.head)}**"
+    m = _LOC_RE.match(ln.head)
+    if m is None:
+        return _md_text(ln.head)
+    return f"{_md_text(m.group(1))} {_md_code(m.group(2))}"
 
 
 def _apply(cur: Cond, typ: str, term: Cond) -> Cond:

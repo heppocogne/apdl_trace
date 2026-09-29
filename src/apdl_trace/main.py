@@ -46,7 +46,13 @@ def _cmd_convert(args: argparse.Namespace) -> int:
 
 
 def _cmd_extract(args: argparse.Namespace) -> int:
-    from apdl_trace.extract import ExtractOptions, run_extract
+    from apdl_trace.extract import (
+        ExtractOptions,
+        run_extract,
+        run_extract_data,
+        to_json,
+        to_xml,
+    )
 
     opts = ExtractOptions(
         expand_all=args.all,
@@ -60,7 +66,11 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         if p is not None and not p.is_file():
             print(f"ファイルが見つからない: {p}", file=sys.stderr)
             return 2
-    text = run_extract(Path(args.out_file), Path(args.map), opts)
+    if args.format == "text":
+        text = run_extract(Path(args.out_file), Path(args.map), opts)
+    else:
+        data = run_extract_data(Path(args.out_file), Path(args.map), opts)
+        text = to_json(data) if args.format == "json" else to_xml(data)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
         print(f"レポート: {args.output}")
@@ -84,6 +94,7 @@ def _cmd_static(args: argparse.Namespace) -> int:
         exts=_exts(args.ext),
         dict_path=Path(args.dict) if args.dict else None,
         brief=args.brief,
+        fmt=args.format,
     )
     text = run_static(entry, src, opts)
     if args.output:
@@ -179,6 +190,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="changed",
         help="状態欄を変化時だけ出すか、毎行出すか",
     )
+    e.add_argument(
+        "--format",
+        choices=["text", "json", "xml"],
+        default="text",
+        help="レポートの出力形式（既定: text）",
+    )
     e.set_defaults(func=_cmd_extract)
 
     st = sub.add_parser(
@@ -202,6 +219,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="選択・取得・座標系・呼び出しだけを出す（その他のコマンドは省く）",
     )
     st.add_argument("--dict", help="引数辞書（既定: 同梱の apdl_dict.json）")
+    st.add_argument(
+        "--format",
+        choices=["text", "md"],
+        default="text",
+        help="md: 折りたたみできるエディタ向けの Markdown（既定: text）",
+    )
     st.set_defaults(func=_cmd_static)
 
     pr = sub.add_parser("probe", help="実機の挙動を確かめるマクロを作る")

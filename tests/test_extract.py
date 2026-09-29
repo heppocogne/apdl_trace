@@ -1,8 +1,16 @@
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from apdl_trace.convert import Converter, ConvertOptions
-from apdl_trace.extract import ExtractOptions, build_report, run_extract
+from apdl_trace.extract import (
+    ExtractOptions,
+    build_report,
+    build_report_data,
+    run_extract,
+    to_json,
+    to_xml,
+)
 from apdl_trace.records import parse_lines
 
 MACRO = """\
@@ -121,6 +129,61 @@ def test_report(tmp_path):
     # 付録
     assert "■ チェックポイントの座標範囲の推移" in text
     assert "■ 荷重ステップ一覧" in text
+
+
+def test_report_data_structure(tmp_path):
+    tmap, _ = _map(tmp_path, {"m.inp": MACRO})
+    recs = parse_lines(_out_lines(_ids(tmap)))
+    data = build_report_data(recs, tmap, ExtractOptions())
+
+    assert data["trace_level"] == "standard"
+    assert data["dry_run"] is True
+    assert data["unknown_ids"] == []
+
+    items = data["items"]
+    assert items[0]["type"] == "start"
+    esel = next(i for i in items if i.get("name") == "ESEL")
+    assert esel["category"] == "select"
+    assert any("MAT 3: 120" in line for line in esel["text"])
+
+    loop = next(i for i in items if i["type"] == "loop")
+    assert loop["count"] == 5
+    assert loop["ended"] is True
+    assert loop["var"] == "i"
+    # 展開していないので初回・最終回だけ、間は omitted で示す
+    assert [it["n"] for it in loop["iterations"]] == [1, 5]
+    assert loop["omitted"] == {"from": 2, "to": 4, "count": 3}
+    solve = next(i for i in loop["iterations"][0]["items"] if i.get("name") == "SOLVE")
+    assert solve["category"] == "solve"
+
+
+def test_report_data_expand_all(tmp_path):
+    tmap, _ = _map(tmp_path, {"m.inp": MACRO})
+    recs = parse_lines(_out_lines(_ids(tmap)))
+    data = build_report_data(recs, tmap, ExtractOptions(expand_all=True))
+    loop = next(i for i in data["items"] if i["type"] == "loop")
+    assert [it["n"] for it in loop["iterations"]] == [1, 2, 3, 4, 5]
+    assert "omitted" not in loop
+
+
+def test_report_json_and_xml_roundtrip(tmp_path):
+    tmap, _ = _map(tmp_path, {"m.inp": MACRO})
+    recs = parse_lines(_out_lines(_ids(tmap)))
+    data = build_report_data(recs, tmap, ExtractOptions())
+
+    parsed = json.loads(to_json(data))
+    assert parsed == data
+
+    root = ET.fromstring(to_xml(data))
+    assert root.tag == "report"
+    assert root.find("trace_level").text == "standard"
+    loop_els = [
+        item
+        for item in root.find("items").findall("item")
+        if item.find("type").text == "loop"
+    ]
+    assert len(loop_els) == 1
+    assert loop_els[0].find("count").text == "5"
 
 
 def test_report_expand_all(tmp_path):
