@@ -316,13 +316,21 @@ def render(
             vals = [a.disp for a in args[start - 1 :] if not a.is_empty]
             return ", ".join(vals) if vals else "（なし）"
         if "〜" in inner:
-            a, _, b = inner.partition("〜")
+            a, _, rest = inner.partition("〜")
+            b, has_inc, incname = rest.partition("〜")
             da = show(a.strip(), None)
             bv = _arg(entry, args, b.strip())
             if bv is None or bv.is_empty:
                 return da
             db = show(b.strip(), None)
-            return da if da == db else f"{da}〜{db}"
+            rng = da if da == db else f"{da}〜{db}"
+            if has_inc and da != db:
+                iv = _arg(entry, args, incname.strip())
+                if iv is not None and not iv.is_empty:
+                    step = parse_num(iv.key)
+                    if step is not None and step != 1:
+                        rng += f"（{fmt_num(step)} きざみ）"
+            return rng
         name, _, style = inner.partition(":")
         return show(name.strip(), style.strip() or None)
 

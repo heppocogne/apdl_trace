@@ -186,10 +186,10 @@
       "Type=NONE": "節点の選択を解除",
       "Type=INVE": "節点の選択を反転",
       "Item=LOC": "節点を {Comp:座標名} = {VMIN〜VMAX} で{Type}",
-      "Item=NODE": "節点番号 {VMIN〜VMAX} で{Type}",
+      "Item=NODE": "節点番号 {VMIN〜VMAX〜VINC} で{Type}",
       "Item=EXT": "外表面の節点を{Type}"
     },
-    "desc": "節点を {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "節点を {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "ESEL": {
     "title": "要素の選択",
@@ -201,15 +201,15 @@
       "Type=ALL": "要素を全選択",
       "Type=NONE": "要素の選択を解除",
       "Type=INVE": "要素の選択を反転",
-      "Item=ELEM": "要素番号 {VMIN〜VMAX} で{Type}",
-      "Item=MAT": "MAT = {VMIN〜VMAX} の要素を{Type}",
-      "Item=TYPE": "TYPE = {VMIN〜VMAX} の要素を{Type}",
-      "Item=REAL": "REAL = {VMIN〜VMAX} の要素を{Type}",
-      "Item=SEC": "SECNUM = {VMIN〜VMAX} の要素を{Type}",
+      "Item=ELEM": "要素番号 {VMIN〜VMAX〜VINC} で{Type}",
+      "Item=MAT": "MAT = {VMIN〜VMAX〜VINC} の要素を{Type}",
+      "Item=TYPE": "TYPE = {VMIN〜VMAX〜VINC} の要素を{Type}",
+      "Item=REAL": "REAL = {VMIN〜VMAX〜VINC} の要素を{Type}",
+      "Item=SEC": "SECNUM = {VMIN〜VMAX〜VINC} の要素を{Type}",
       "Item=ENAM": "要素名 {VMIN:要素名} の要素を{Type}",
       "Item=CENT": "重心の {Comp:座標名} = {VMIN〜VMAX} の要素を{Type}"
     },
-    "desc": "要素を {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "要素を {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "KSEL": {
     "title": "キーポイントの選択",
@@ -220,9 +220,9 @@
       "Type=ALL": "キーポイントを全選択",
       "Type=NONE": "キーポイントの選択を解除",
       "Item=LOC": "キーポイントを {Comp:座標名} = {VMIN〜VMAX} で{Type}",
-      "Item=KP": "キーポイント番号 {VMIN〜VMAX} で{Type}"
+      "Item=KP": "キーポイント番号 {VMIN〜VMAX〜VINC} で{Type}"
     },
-    "desc": "キーポイントを {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "キーポイントを {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "LSEL": {
     "title": "線の選択",
@@ -233,9 +233,9 @@
       "Type=ALL": "線を全選択",
       "Type=NONE": "線の選択を解除",
       "Item=LOC": "線を {Comp:座標名} = {VMIN〜VMAX} で{Type}",
-      "Item=LINE": "線番号 {VMIN〜VMAX} で{Type}"
+      "Item=LINE": "線番号 {VMIN〜VMAX〜VINC} で{Type}"
     },
-    "desc": "線を {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "線を {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "ASEL": {
     "title": "面積の選択",
@@ -246,9 +246,9 @@
       "Type=ALL": "面積を全選択",
       "Type=NONE": "面積の選択を解除",
       "Item=LOC": "面積を {Comp:座標名} = {VMIN〜VMAX} で{Type}",
-      "Item=AREA": "面積番号 {VMIN〜VMAX} で{Type}"
+      "Item=AREA": "面積番号 {VMIN〜VMAX〜VINC} で{Type}"
     },
-    "desc": "面積を {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "面積を {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "VSEL": {
     "title": "体積の選択",
@@ -259,10 +259,10 @@
       "Type=ALL": "体積を全選択",
       "Type=NONE": "体積の選択を解除",
       "Item=LOC": "体積を {Comp:座標名} = {VMIN〜VMAX} で{Type}",
-      "Item=VOLU": "体積番号 {VMIN〜VMAX} で{Type}",
-      "Item=MAT": "MAT = {VMIN〜VMAX} の体積を{Type}"
+      "Item=VOLU": "体積番号 {VMIN〜VMAX〜VINC} で{Type}",
+      "Item=MAT": "MAT = {VMIN〜VMAX〜VINC} の体積を{Type}"
     },
-    "desc": "体積を {Item} {Comp} = {VMIN〜VMAX} で{Type}"
+    "desc": "体積を {Item} {Comp} = {VMIN〜VMAX〜VINC} で{Type}"
   },
   "CMSEL": {
     "title": "コンポーネントの選択",
